@@ -1,5 +1,11 @@
 const MAX_BYTES = 20 * 1024 * 1024;
 
+const LS_CONVERT_MODE = "converter.convertMode";
+const LS_API_BASE_URL = "converter.apiBaseUrl";
+const LS_API_KEY = "converter.apiKey";
+
+const CLOUD_SUPPORTED_FORMATS = new Set(["jpeg", "png", "webp", "avif", "gif", "tiff"]);
+
 const FAQ_ITEMS = [
   {
     q: "Is the image converter really free?",
@@ -7,7 +13,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "Are my images safe and secure?",
-    a: "Your files are processed locally in your browser. They are not uploaded to our servers, which keeps your data on your device.",
+    a: "By default, conversions run locally in your browser and your file stays on your device. If you enable Cloud API mode, the file is sent to the API URL you configure.",
   },
   {
     q: "What is the maximum file size I can convert?",
@@ -31,6 +37,8 @@ const OUTPUT_FORMATS = [
   { value: "png", label: "PNG", mime: "image/png", ext: "png" },
   { value: "jpeg", label: "JPEG", mime: "image/jpeg", ext: "jpg" },
   { value: "webp", label: "WEBP", mime: "image/webp", ext: "webp" },
+  { value: "avif", label: "AVIF (cloud API)", mime: "image/avif", ext: "avif", cloudOnly: true },
+  { value: "tiff", label: "TIFF (cloud API)", mime: "image/tiff", ext: "tiff", cloudOnly: true },
   { value: "bmp", label: "BMP", mime: "image/bmp", ext: "bmp" },
   { value: "svg", label: "SVG (raster inside)", mime: "image/svg+xml", ext: "svg" },
   { value: "pdf", label: "PDF (1 page)", mime: "application/pdf", ext: "pdf" },
@@ -84,6 +92,59 @@ function initFaq() {
 
 function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+}
+
+function lsGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function lsSet(key, value) {
+  try {
+    if (value === null || value === undefined || value === "") localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
+function normalizeApiBaseUrl(raw) {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return "";
+  let url;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return "";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+  url.hash = "";
+  url.pathname = url.pathname.replace(/\/+$/, "");
+  url.search = "";
+  return url.toString().replace(/\/+$/, "");
+}
+
+function apiSharpFormatFromUi(fmt) {
+  if (fmt === "jpeg") return "jpeg";
+  return fmt;
+}
+
+function downloadArrayBuffer(buffer, mime, filename) {
+  const blob = new Blob([buffer], { type: mime });
+  downloadBlob(blob, filename);
+}
+
+async function readJsonIfPossible(response) {
+  const ct = response.headers.get("content-type") || "";
+  if (!ct.includes("application/json")) return null;
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
 }
 
 function formatBytes(n) {
@@ -212,25 +273,48 @@ function main() {
   const qualityWrap = document.getElementById("qualityWrap");
   const maxWidth = document.getElementById("maxWidth");
   const maxHeight = document.getElementById("maxHeight");
+  const modeBrowser = document.getElementById("modeBrowser");
+  const modeCloud = document.getElementById("modeCloud");
+  const cloudPanel = document.getElementById("cloudPanel");
+  const apiBaseUrl = document.getElementById("apiBaseUrl");
+  const apiKey = document.getElementById("apiKey");
 
   let currentFile = null;
   let currentObjectUrl = null;
   let currentBitmap = null;
 
   const webpOk = supportsWebp();
-  OUTPUT_FORMATS.forEach((f) => {
-    if (f.value === "webp" && !webpOk) return;
-    const opt = document.createElement("option");
-    opt.value = f.value;
-    opt.textContent = f.label;
-    outFormat.appendChild(opt);
-  });
-  if (!webpOk && outFormat.querySelector('option[value="webp"]') === null) {
-    const opt = document.createElement("option");
-    opt.value = "webp";
-    opt.textContent = "WEBP (not supported)";
-    opt.disabled = true;
-    outFormat.appendChild(opt);
+
+  function outputFormatsForMode(cloud) {
+    return OUTPUT_FORMATS.filter((f) => {
+      if (f.cloudOnly && !cloud) return false;
+      if (f.value === "webp" && !cloud && !webpOk) return false;
+      return true;
+    });
+  }
+
+  function rebuildOutFormatOptions(cloud) {
+    const prev = outFormat.value;
+    outFormat.innerHTML = "";
+
+    const formats = outputFormatsForMode(cloud);
+    formats.forEach((f) => {
+      const opt = document.createElement("option");
+      opt.value = f.value;
+      opt.textContent = f.label;
+      outFormat.appendChild(opt);
+    });
+
+    if (!cloud && !webpOk) {
+      const opt = document.createElement("option");
+      opt.value = "webp";
+      opt.textContent = "WEBP (not supported)";
+      opt.disabled = true;
+      outFormat.appendChild(opt);
+    }
+
+    const allowed = new Set(formats.map((f) => f.value));
+    if (allowed.has(prev)) outFormat.value = prev;
   }
 
   function showError(text) {
@@ -245,13 +329,59 @@ function main() {
 
   function setQualityVisibility() {
     const v = outFormat.value;
-    const show = v === "jpeg" || v === "webp";
+    const show = v === "jpeg" || v === "webp" || v === "avif";
     qualityWrap.classList.toggle("hidden", !show);
+  }
+
+  function isCloudMode() {
+    return Boolean(modeCloud?.checked);
+  }
+
+  function updateModeUi() {
+    const cloud = isCloudMode();
+    cloudPanel?.classList.toggle("hidden", !cloud);
+    rebuildOutFormatOptions(cloud);
+    setQualityVisibility();
+  }
+
+  function persistModeFields() {
+    lsSet(LS_CONVERT_MODE, isCloudMode() ? "cloud" : "browser");
+    lsSet(LS_API_BASE_URL, apiBaseUrl?.value?.trim() || "");
+    lsSet(LS_API_KEY, apiKey?.value || "");
+  }
+
+  function loadModeFields() {
+    const mode = lsGet(LS_CONVERT_MODE);
+    if (mode === "cloud") modeCloud.checked = true;
+    else modeBrowser.checked = true;
+
+    const base = lsGet(LS_API_BASE_URL);
+    if (base) apiBaseUrl.value = base;
+
+    const key = lsGet(LS_API_KEY);
+    if (key) apiKey.value = key;
+
+    updateModeUi();
   }
 
   outFormat.addEventListener("change", setQualityVisibility);
   quality.addEventListener("input", () => {
     qualityVal.textContent = quality.value;
+  });
+
+  loadModeFields();
+
+  modeBrowser.addEventListener("change", () => {
+    updateModeUi();
+    persistModeFields();
+  });
+  modeCloud.addEventListener("change", () => {
+    updateModeUi();
+    persistModeFields();
+  });
+  ["change", "blur"].forEach((ev) => {
+    apiBaseUrl.addEventListener(ev, persistModeFields);
+    apiKey.addEventListener(ev, persistModeFields);
   });
 
   function resetFile() {
@@ -340,17 +470,78 @@ function main() {
     }
 
     const fmt = outFormat.value;
+
+    const mw = maxWidth.value.trim();
+    const mh = maxHeight.value.trim();
+    const stem = baseName(currentFile.name);
+    const q = Number(quality.value) / 100;
+
+    if (isCloudMode()) {
+      if (!CLOUD_SUPPORTED_FORMATS.has(fmt)) {
+        showError("Cloud API does not support this output format yet. Switch to “In browser”, or pick PNG/JPEG/WEBP/AVIF/GIF/TIFF.");
+        return;
+      }
+
+      const base = normalizeApiBaseUrl(apiBaseUrl.value);
+      const key = apiKey.value.trim();
+      if (!base) {
+        showError("Please set a valid API base URL (include https:// or http://).");
+        return;
+      }
+      if (!key) {
+        showError("Please set your API key for cloud conversion.");
+        return;
+      }
+
+      persistModeFields();
+
+      const sharpFormat = apiSharpFormatFromUi(fmt);
+      const url = new URL("/api/v1/convert", `${base}/`);
+      url.searchParams.set("format", sharpFormat);
+      if (sharpFormat === "jpeg" || sharpFormat === "webp" || sharpFormat === "avif") {
+        url.searchParams.set("quality", String(quality.value));
+      }
+      if (mw) url.searchParams.set("width", mw);
+      if (mh) url.searchParams.set("height", mh);
+
+      btnConvert.disabled = true;
+      try {
+        const form = new FormData();
+        form.append("file", currentFile, currentFile.name);
+
+        const res = await fetch(url.toString(), {
+          method: "POST",
+          headers: { "x-api-key": key },
+          body: form,
+        });
+
+        if (!res.ok) {
+          const json = await readJsonIfPossible(res);
+          const msg = json?.error || `Cloud conversion failed (${res.status}).`;
+          return showError(msg);
+        }
+
+        const buf = await res.arrayBuffer();
+        const mime = res.headers.get("content-type") || "application/octet-stream";
+        const cd = res.headers.get("content-disposition") || "";
+        const m = cd.match(/filename="([^"]+)"/i);
+        const filename = m?.[1] || `${stem}.${fmt === "jpeg" ? "jpg" : fmt}`;
+        downloadArrayBuffer(buf, mime, filename);
+      } catch (err) {
+        showError(err?.message || "Cloud conversion failed.");
+      } finally {
+        btnConvert.disabled = false;
+      }
+      return;
+    }
+
     if (fmt === "webp" && !webpOk) {
       showError("WEBP export is not supported in this browser.");
       return;
     }
 
-    const mw = maxWidth.value.trim();
-    const mh = maxHeight.value.trim();
     const fillWhite = fmt !== "png";
     const canvas = imageBitmapToCanvas(currentBitmap, mw || null, mh || null, fillWhite);
-    const stem = baseName(currentFile.name);
-    const q = Number(quality.value) / 100;
 
     try {
       if (fmt === "png") {
@@ -385,6 +576,11 @@ function main() {
           "image/webp",
           q
         );
+        return;
+      }
+
+      if (fmt === "avif" || fmt === "tiff") {
+        showError("This output format is only available in Cloud API mode.");
         return;
       }
 

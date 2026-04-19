@@ -60,6 +60,37 @@
               </label>
             </div>
 
+            <div class="convert-mode" id="convertModeWrap">
+              <p class="convert-mode__title">Conversion mode</p>
+              <div class="convert-mode__row" role="radiogroup" aria-label="Conversion mode">
+                <label class="radio-pill">
+                  <input type="radio" name="convertMode" value="browser" id="modeBrowser" checked />
+                  <span>In browser</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="radio" name="convertMode" value="cloud" id="modeCloud" />
+                  <span>Cloud API</span>
+                </label>
+              </div>
+              <p class="convert-mode__hint" id="cloudModeHint">
+                Cloud mode uploads the file to your configured API server. Use it for heavier conversions or when browser export is unreliable.
+              </p>
+
+              <div class="cloud-panel hidden" id="cloudPanel" aria-live="polite">
+                <label class="field">
+                  <span class="field__label">API base URL</span>
+                  <input type="url" id="apiBaseUrl" class="field__input" placeholder="https://your-domain.com" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span class="field__label">API key</span>
+                  <input type="password" id="apiKey" class="field__input" placeholder="x-api-key" autocomplete="new-password" />
+                </label>
+                <p class="cloud-panel__note">
+                  The API key is stored only in this browser (<code>localStorage</code>) and is never committed to git.
+                </p>
+              </div>
+            </div>
+
             <p class="error-msg hidden" id="errorMsg" role="alert"></p>
 
             <div class="actions-row">
@@ -94,7 +125,7 @@
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </div>
             <h3 class="feature-card__title">Secure File Processing</h3>
-            <p class="feature-card__text">All conversions happen in your browser. Your files never leave your device</p>
+            <p class="feature-card__text">By default, conversions run in your browser on your device. Cloud API mode is optional and uploads files only to the API you configure.</p>
           </article>
         </div>
       </div>
