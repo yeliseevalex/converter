@@ -19,10 +19,16 @@ jobs:
           port: 22
           script_stop: true
           script: |
+            set -euo pipefail
             cd /srv/projects/converter
             git pull origin main
             cd api
             npm ci --omit=dev
             sudo systemctl restart converter-api
             sudo systemctl status converter-api --no-pager
+            set -a
+            [ -f /srv/projects/converter/api/.env ] && . /srv/projects/converter/api/.env
+            set +a
+            API_PORT="${PORT:-3001}"
+            curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null
             echo "✅ Frontend and API deployed successfully"

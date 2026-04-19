@@ -7,6 +7,10 @@ This repository now includes:
 
 ## API quick start
 
+Requirements:
+
+- Node.js **20+** (the API dependencies expect modern Node)
+
 1. Install dependencies:
 
 ```bash
@@ -32,6 +36,28 @@ Health check:
 
 ```bash
 curl http://127.0.0.1:3001/health
+```
+
+There is also:
+
+```bash
+curl http://127.0.0.1:3001/api/v1/health
+```
+
+### CORS (optional)
+
+If your frontend is hosted on a **different origin** than the API, set `CORS_ORIGIN` in `api/.env`:
+
+- **Allow any origin** (ok for experiments, not recommended for production):
+
+```env
+CORS_ORIGIN=*
+```
+
+- **Allow specific origins** (recommended):
+
+```env
+CORS_ORIGIN=https://example.com,https://www.example.com
 ```
 
 Convert endpoint:
@@ -69,3 +95,4 @@ GitHub Action `.github/workflows/deploy.yml` now does:
 2. `git pull origin main`
 3. `cd api && npm ci --omit=dev`
 4. `systemctl restart converter-api`
+5. `curl` health check against `http://127.0.0.1:$PORT/health` (reads `PORT` from `/srv/projects/converter/api/.env` when present)

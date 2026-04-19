@@ -1,5 +1,6 @@
 const path = require("node:path");
 const Fastify = require("fastify");
+const cors = require("@fastify/cors");
 const multipart = require("@fastify/multipart");
 const rateLimit = require("@fastify/rate-limit");
 const sharp = require("sharp");
@@ -11,6 +12,40 @@ const HOST = process.env.HOST || "127.0.0.1";
 const API_KEY = process.env.CONVERTER_API_KEY || "";
 
 const SUPPORTED_FORMATS = new Set(["jpeg", "png", "webp", "avif", "gif", "tiff"]);
+
+function parseCorsOrigins(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return null;
+
+  if (value === "*") {
+    return { mode: "any" };
+  }
+
+  let parts = [];
+  if (value.startsWith("[") && value.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) parts = parsed.map(String);
+    } catch {
+      parts = [];
+    }
+  } else {
+    parts = value.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+
+  const origins = parts
+    .map((o) => {
+      try {
+        return new URL(o).origin;
+      } catch {
+        return "";
+      }
+    })
+    .filter(Boolean);
+
+  if (!origins.length) return null;
+  return { mode: "list", origins: new Set(origins) };
+}
 
 function parsePositiveInt(value) {
   if (value === undefined || value === null || value === "") return undefined;
@@ -39,6 +74,18 @@ app.register(rateLimit, {
   timeWindow: process.env.RATE_LIMIT_WINDOW || "1 minute",
 });
 
+const corsCfg = parseCorsOrigins(process.env.CORS_ORIGIN);
+if (corsCfg?.mode === "any") {
+  app.register(cors, { origin: true });
+} else if (corsCfg?.mode === "list") {
+  app.register(cors, {
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      return cb(null, corsCfg.origins.has(origin));
+    },
+  });
+}
+
 app.register(multipart, {
   attachFieldsToBody: false,
   limits: {
@@ -48,7 +95,8 @@ app.register(multipart, {
 });
 
 app.addHook("preHandler", async (request, reply) => {
-  if (request.url === "/health") return;
+  const urlPath = String(request.url || "").split("?")[0];
+  if (urlPath === "/health" || urlPath === "/api/v1/health") return;
   if (!API_KEY) return;
 
   const incoming = request.headers["x-api-key"];
@@ -58,6 +106,10 @@ app.addHook("preHandler", async (request, reply) => {
 });
 
 app.get("/health", async () => {
+  return { ok: true };
+});
+
+app.get("/api/v1/health", async () => {
   return { ok: true };
 });
 
