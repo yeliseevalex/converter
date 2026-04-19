@@ -1,0 +1,16 @@
+[Unit]
+Description=Converter API service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/projects/converter/api
+ExecStart=/usr/bin/node /srv/projects/converter/api/src/server.js
+Restart=always
+RestartSec=3
+EnvironmentFile=/srv/projects/converter/api/.env
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

@@ -18,8 +18,11 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
           script_stop: true
-          debug: true
           script: |
             cd /srv/projects/converter
             git pull origin main
-            echo "✅ Deployed successfully"
+            cd api
+            npm ci --omit=dev
+            sudo systemctl restart converter-api
+            sudo systemctl status converter-api --no-pager
+            echo "✅ Frontend and API deployed successfully"
