@@ -31,7 +31,23 @@ jobs:
               PORT_LINE="$(grep -E '^PORT=' /srv/projects/converter/api/.env | tail -n 1 || true)"
               if [ -n "${PORT_LINE}" ]; then
                 API_PORT="${PORT_LINE#PORT=}"
+                API_PORT="${API_PORT//\"/}"
+                API_PORT="$(echo "${API_PORT}" | tr -d '[:space:]')"
               fi
             fi
-            curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null
+
+            ok="0"
+            for i in $(seq 1 30); do
+              if curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null; then
+                ok="1"
+                break
+              fi
+              sleep 1
+            done
+
+            if [ "${ok}" != "1" ]; then
+              echo "❌ Health check failed on http://127.0.0.1:${API_PORT}/health"
+              sudo journalctl -u converter-api -n 80 --no-pager || true
+              exit 1
+            fi
             echo "✅ Frontend and API deployed successfully"
