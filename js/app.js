@@ -509,15 +509,20 @@ function main() {
         const form = new FormData();
         form.append("file", currentFile, currentFile.name);
 
+        const headers = {};
+        if (key.startsWith("cv_")) headers.Authorization = `Bearer ${key}`;
+        else headers["x-api-key"] = key;
+
         const res = await fetch(url.toString(), {
           method: "POST",
-          headers: { "x-api-key": key },
+          headers,
           body: form,
         });
 
         if (!res.ok) {
           const json = await readJsonIfPossible(res);
           const msg = json?.error || `Cloud conversion failed (${res.status}).`;
+          if (res.status === 402) return showError(`${msg} Please top up credits for your API key.`);
           return showError(msg);
         }
 

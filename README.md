@@ -24,6 +24,11 @@ npm install
 cp .env.example .env
 ```
 
+Set at least:
+
+- `ADMIN_TOKEN` (secret used to create customer keys)
+- `DB_PATH` (SQLite file path on disk)
+
 3. Start API:
 
 ```bash
@@ -64,12 +69,42 @@ Convert endpoint:
 
 ```bash
 curl -X POST "http://127.0.0.1:3001/api/v1/convert?format=webp&quality=85&width=1600" \
-  -H "x-api-key: replace-with-long-random-key" \
+  -H "Authorization: Bearer cv_REPLACE_ME" \
   -F "file=@/path/to/input.jpg" \
   --output output.webp
 ```
 
 Supported output formats: `jpeg`, `png`, `webp`, `avif`, `gif`, `tiff`
+
+### Paid access + credits (built-in)
+
+The API uses SQLite (`DB_PATH`) to store:
+
+- customers + remaining credits
+- API keys (stored as **SHA-256 hashes**; plaintext key is returned only once)
+
+Create a customer + API key:
+
+```bash
+curl -sS -X POST "http://127.0.0.1:3001/api/v1/admin/keys" \
+  -H "x-admin-token: replace-with-long-random-admin-token" \
+  -H "content-type: application/json" \
+  -d "{\"credits\":1000,\"email\":\"user@example.com\",\"label\":\"paid-plan\"}"
+```
+
+Add/remove credits later:
+
+```bash
+curl -sS -X POST "http://127.0.0.1:3001/api/v1/admin/credits" \
+  -H "x-admin-token: replace-with-long-random-admin-token" \
+  -H "content-type: application/json" \
+  -d "{\"customerId\":1,\"delta\":500}"
+```
+
+Notes:
+
+- Each successful conversion spends `CREDIT_COST` credits (default `1`). If conversion fails after credits were deducted, the API attempts to refund that spend.
+- Legacy shared key mode still exists for emergencies: set `ALLOW_GLOBAL_API_KEY=1` and `CONVERTER_API_KEY=...` (this bypasses credits for everyone).
 
 ## Hetzner setup (systemd)
 
@@ -86,6 +121,7 @@ Expected server paths:
 
 - repo: `/srv/projects/converter`
 - API env file: `/srv/projects/converter/api/.env`
+- SQLite file: `/srv/projects/converter/api/data/converter.sqlite` (ensure `www-data` can write this folder)
 
 ## CI/CD
 
