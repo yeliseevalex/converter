@@ -1,6 +1,6 @@
 /* --- Variables --- */
 :root {
-  --purple: #f80b0b;
+  --purple: #a855f7;
   --blue: #3b82f6;
   --gradient: linear-gradient(135deg, var(--purple) 0%, var(--blue) 100%);
   --gradient-text: linear-gradient(90deg, #8b5cf6 0%, #3b82f6 100%);
