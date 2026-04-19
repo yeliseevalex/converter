@@ -26,9 +26,12 @@ jobs:
             npm ci --omit=dev
             sudo systemctl restart converter-api
             sudo systemctl status converter-api --no-pager
-            set -a
-            [ -f /srv/projects/converter/api/.env ] && . /srv/projects/converter/api/.env
-            set +a
-            API_PORT="${PORT:-3001}"
+            API_PORT="3001"
+            if [ -f /srv/projects/converter/api/.env ]; then
+              PORT_LINE="$(grep -E '^PORT=' /srv/projects/converter/api/.env | tail -n 1 || true)"
+              if [ -n "${PORT_LINE}" ]; then
+                API_PORT="${PORT_LINE#PORT=}"
+              fi
+            fi
             curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null
             echo "✅ Frontend and API deployed successfully"

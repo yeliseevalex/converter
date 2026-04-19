@@ -95,4 +95,6 @@ GitHub Action `.github/workflows/deploy.yml` now does:
 2. `git pull origin main`
 3. `cd api && npm ci --omit=dev`
 4. `systemctl restart converter-api`
-5. `curl` health check against `http://127.0.0.1:$PORT/health` (reads `PORT` from `/srv/projects/converter/api/.env` when present)
+5. `curl` health check against `http://127.0.0.1:$PORT/health` (reads `PORT=` from `/srv/projects/converter/api/.env` when present)
+
+Note: do **not** `source` the whole `.env` in bash if values can contain spaces. Quote them (example: `RATE_LIMIT_WINDOW="1 minute"`).
